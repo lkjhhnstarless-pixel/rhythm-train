@@ -1,0 +1,870 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>節奏列車．拍號篇</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Chiron+GoRound+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout：上方站名列（分頁＋速度）→ 中央鐵軌舞台（火車頭＋車廂，可換行）→ 下方月台／操作區。
+   車廂長度跟著拍號變：4/4＝8 座位、3/4＝6、2/4＝4、3/8＝3；1 個座位永遠是 1 個八分音符。 */
+:root{
+  --sky:#e4f1f6; --sky2:#d3e7ef; --ink:#1b2a3a; --muted:#566a7d; --paper:#ffffff; --line:#c3d6e0;
+  --loco:#d6453d; --loco2:#a9332d; --car:#284766; --car2:#1d3550; --cabin:#f5f9fb; --rail:#6b5644; --gold:#ffbf2e;
+  --n1:#f07a2c; --n2:#2b9f4c; --n3:#109b90; --n4:#3a77d8; --n6:#7552d0; --n8:#c9418f; --rest:#8a97a6;
+  --ok:#23915a; --bad:#cf3f3f; --warn:#e8961c;
+  --f-display:"Chiron GoRound TC","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-body:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
+  --f-num:"Baloo 2","Chiron GoRound TC",system-ui,sans-serif;
+  --seat:clamp(30px,min(4.6vw,calc((100vw - 120px) / 20)),52px);
+  color-scheme:light;
+}
+html,body{background:var(--sky);color:var(--ink);margin:0}
+body{font-family:var(--f-body);font-size:16px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 24px;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+button:focus-visible,input:focus-visible,.car:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto}
+
+/* ---------- 站名列 ---------- */
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding-block:14px 12px;border-bottom:2px solid var(--line);margin-bottom:18px}
+.brand{display:flex;align-items:baseline;gap:12px;margin-right:auto}
+.brand h1{font:900 30px/1 var(--f-display);margin:0;letter-spacing:.06em;color:var(--loco)}
+.brand p{margin:0;color:var(--muted);font-size:14px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tab{border:2px solid var(--car);background:var(--paper);color:var(--car);border-radius:999px;padding:7px 16px;font:700 16px/1.2 var(--f-display);min-height:44px}
+.tab[aria-current="true"]{background:var(--car);color:#fff}
+.settings{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;font-size:14px;color:var(--muted)}
+.settings label{display:flex;align-items:center;gap:6px;min-height:44px}
+.settings input[type=range]{width:120px;accent-color:var(--car)}
+.settings input[type=checkbox]{width:20px;height:20px;accent-color:var(--car)}
+.settings output{font:800 18px/1 var(--f-num);color:var(--ink);min-width:2.2em;font-variant-numeric:tabular-nums}
+
+/* ---------- 共用 ---------- */
+h2{font:700 22px/1.3 var(--f-display);margin:0 0 6px;text-wrap:balance}
+h3{font:700 19px/1.3 var(--f-display);margin:0}
+.btn{border:0;border-radius:14px;padding:10px 18px;min-height:48px;font:700 17px/1.2 var(--f-display);background:var(--paper);color:var(--car);box-shadow:0 0 0 2px var(--car) inset}
+.btn.primary{background:var(--car);color:#fff;box-shadow:none}
+.btn.go{background:var(--loco);color:#fff;box-shadow:0 4px 0 var(--loco2);font-size:20px;padding:10px 26px}
+.btn.go:active{transform:translateY(3px);box-shadow:0 1px 0 var(--loco2)}
+.btn:disabled{opacity:.4;cursor:default;transform:none}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.hint{min-height:1.6em;margin:10px 0;font-size:17px;font-weight:500}
+.hint.bad{color:var(--bad)}
+.hint.ok{color:var(--ok)}
+.shake{animation:shake .4s}
+@keyframes shake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+.sect{font:700 15px/1 var(--f-display);color:var(--muted);letter-spacing:.15em;margin:26px 0 10px}
+.muted{color:var(--muted)}
+
+/* ---------- 音符乘客 ---------- */
+.note{height:62%;width:auto;flex:none;display:block}
+.pax,.token{position:relative;border:0;border-radius:10px;background:var(--c);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 0 10px;box-shadow:0 -4px 0 rgba(0,0,0,.14) inset;transition:transform .12s,box-shadow .12s}
+/* 音符畫在第一個座位上（聲音從那裡開始），後面的座位只用小圓點表示拉長 */
+.pax,.token{align-items:flex-start}
+.pax .note,.token .note{width:calc(var(--seat) - 6px)}
+.mini .token,.plist .pax{align-items:center}
+.mini .note,.plist .note{width:auto}
+.pax.rest,.token.rest{background:repeating-linear-gradient(135deg,#e6ebf0 0 7px,#d6dde5 7px 14px);color:#4f5d6c;box-shadow:0 0 0 2px #9aa7b4 inset}
+.ticks{position:absolute;left:0;right:0;bottom:4px;display:flex;justify-content:space-around;padding:0 4px}
+.ticks i{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.65}
+.zz{position:absolute;top:2px;right:5px;font:800 11px/1 var(--f-num);opacity:.8}
+
+/* ---------- 拍號 ---------- */
+/* 文字裡的拍號（按鈕、提示、說明）也寫成上下疊的直式 */
+.vsig{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font:800 .8em/.92 var(--f-num);margin:0 .12em}
+.vsig b{display:block}
+
+/* ---------- 火車 ---------- */
+.stage{position:relative;overflow:hidden;background:linear-gradient(var(--sky) 0 70%,var(--sky2));border-radius:18px;padding:22px 14px 32px;border:2px solid var(--line)}
+.train{display:flex;flex-wrap:wrap;align-items:flex-end;gap:36px 14px}
+.train.arrive{animation:arrive .9s cubic-bezier(.2,.7,.3,1)}
+.train.depart{transform:translateX(-140vw);transition:transform 1.6s cubic-bezier(.55,0,.9,.55)}
+@keyframes arrive{from{transform:translateX(70vw)}}
+.loco{position:relative;width:calc(var(--seat)*2.7);flex:none}
+.loco svg{display:block;width:100%;height:auto}
+/* 車頭駕駛室上的拍號掛牌：一列火車只用一種拍號，只有車頭掛牌 */
+.lsig{position:absolute;left:59%;top:19%;width:33%;height:48%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;color:var(--car);border-radius:6px;box-shadow:0 0 0 2px var(--car) inset;font:800 calc(var(--seat)*.44)/1 var(--f-num)}
+.loco .wh{transform-box:fill-box;transform-origin:center}
+.smoke{position:absolute;left:13%;top:-6px;width:20%;height:10px}
+.smoke i{position:absolute;left:0;bottom:0;width:calc(var(--seat)*.42);aspect-ratio:1;border-radius:50%;background:#fff;opacity:0}
+.rolling .smoke i{animation:puff 1.2s ease-out infinite}
+.rolling .smoke i:nth-child(2){animation-delay:.4s}
+.rolling .smoke i:nth-child(3){animation-delay:.8s}
+@keyframes puff{0%{opacity:.9;transform:translate(0,0) scale(.5)}100%{opacity:0;transform:translate(26px,-46px) scale(1.6)}}
+.rolling .wh,.rolling .wheels i{animation:spin .7s linear infinite reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+.rolling .car,.rolling .loco svg,.rolling .lsig{animation:bob .35s ease-in-out infinite alternate}
+@keyframes bob{to{transform:translateY(-2px)}}
+
+.car{position:relative;flex:none;display:grid;grid-template-columns:auto;align-items:end;background:var(--car);border-radius:16px 16px 8px 8px;padding:8px 10px 10px;box-shadow:0 -6px 0 var(--car2) inset}
+.car::before{content:"";position:absolute;left:-16px;bottom:16px;width:16px;height:7px;background:#2c3440;border-radius:2px}
+.car[data-act]{cursor:pointer}
+.car.sel{box-shadow:0 -6px 0 var(--car2) inset,0 0 0 4px var(--gold),0 0 0 8px rgba(255,191,46,.35)}
+.car.over{box-shadow:0 -6px 0 var(--car2) inset,0 0 0 4px var(--bad),0 0 0 9px rgba(207,63,63,.3)}
+.car.under{box-shadow:0 -6px 0 var(--car2) inset,0 0 0 4px var(--warn),0 0 0 9px rgba(232,150,28,.3)}
+.beats{display:grid;grid-template-columns:repeat(var(--cols),var(--seat));margin-bottom:6px}
+.beat{text-align:center;font:800 calc(var(--seat)*.4)/1.1 var(--f-num);color:#9fb8cd;border-radius:8px;padding:2px 0;transition:transform .1s,color .1s,background .2s}
+.beat small{display:block;font:700 calc(var(--seat)*.26)/1.25 var(--f-display);color:#7f9ab0}
+.beat.lv2{color:#ffb0a6}
+.beat.lv2 small{color:#ff9a8c}
+.beat.lv1 small{color:#b9cbe0}
+.beat.on{color:var(--gold);transform:scale(1.3)}
+.beat.lv2.on{color:#ff6b5e;transform:scale(1.55)}
+.beat.hit{background:rgba(46,180,100,.7);color:#fff}
+.beat.near{background:rgba(232,150,28,.75);color:#fff}
+.beat.miss{background:rgba(207,63,63,.7);color:#fff}
+.beat.hit small,.beat.near small,.beat.miss small{color:#fff}
+.seats{display:grid;grid-template-columns:repeat(var(--cols),var(--seat));grid-template-rows:calc(var(--seat)*1.3);background:var(--cabin);border-radius:9px;overflow:hidden}
+.seat{grid-row:1;position:relative;border-right:0}
+.seat.be{border-right:2px solid #9fb8cd}
+.seat.last{border-right:0}
+.seat.bb{background:#e8f0f5}
+.seat::before{content:"";position:absolute;left:18%;right:18%;top:24%;bottom:30%;border-radius:8px 8px 3px 3px;background:#d3e0e8}
+.seat small{position:absolute;bottom:2px;left:0;right:0;text-align:center;font:600 11px/1 var(--f-num);color:#8ba1b3}
+.seat.xs{background:repeating-linear-gradient(135deg,#fbd5d5 0 6px,#f3b5b5 6px 12px);border-right:0}
+.seat.xs::before{display:none}
+.seat.xs small{color:var(--bad);font:800 12px/1 var(--f-display)}
+.pax{grid-row:1;z-index:1;margin:4px 3px}
+.pax.on{transform:translateY(-5px) scale(1.04);box-shadow:0 0 0 3px var(--gold),0 8px 12px rgba(0,0,0,.25)}
+.car-foot{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:10px;color:#cbdbe8;font-size:13px;margin-top:6px;padding:0 2px}
+.car-foot b{font:800 16px/1 var(--f-num);color:#fff;font-variant-numeric:tabular-nums}
+.car.full .car-foot b{color:var(--gold)}
+.wheels{position:absolute;left:0;right:0;bottom:-15px;display:flex;justify-content:space-between;padding:0 14%}
+.wheels i{width:28px;height:28px;border-radius:50%;border:3px solid #222b36;background:radial-gradient(circle,#c9d3dd 0 3px,transparent 4px),conic-gradient(#3a4552 0 25%,#5b6775 0 50%,#3a4552 0 75%,#5b6775 0)}
+.car::after,.loco::after{content:"";position:absolute;left:-14px;right:-14px;bottom:-22px;height:7px;border-radius:2px;background:repeating-linear-gradient(90deg,var(--rail) 0 6px,#8a735f 6px 22px);z-index:-1}
+.loco::after{bottom:-16px}
+.countin{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:5}
+.countin span{width:110px;height:110px;border-radius:50%;background:var(--gold);color:var(--ink);display:grid;place-items:center;font:800 64px/1 var(--f-num);box-shadow:0 8px 0 rgba(0,0,0,.15)}
+
+/* ---------- 車站導覽 ---------- */
+.rules{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:center;background:var(--paper);border-radius:18px;padding:20px 22px;border:2px solid var(--line);margin-bottom:8px}
+.rules ul{margin:6px 0 4px;padding-left:1.2em}
+.rules li{margin:4px 0}
+.rules li b{color:var(--loco)}
+.bigsig{display:flex;flex-direction:column;background:var(--car);padding:16px 22px;border-radius:18px;color:#fff}
+.bigsig div{display:flex;align-items:center;gap:14px;padding:4px 0}
+.bigsig b{font:800 60px/1 var(--f-num);width:52px;text-align:center}
+.bigsig span{font:700 18px/1.4 var(--f-display)}
+.mcard{background:var(--paper);border-radius:18px;padding:16px;border:2px solid var(--line);margin-bottom:12px}
+.minfo{display:flex;flex-wrap:wrap;align-items:center;gap:4px 22px;margin-bottom:14px}
+.minfo p{margin:0;font-size:15px}
+.minfo .acc{font:700 17px/1.4 var(--f-display);color:var(--loco)}
+.mcard .stage{padding:20px 12px 32px}
+table.bt{border-collapse:collapse;background:var(--paper);width:100%;max-width:760px;border-radius:12px;overflow:hidden}
+.bt th,.bt td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:middle}
+.bt th{background:#eef5f9;font:700 15px/1.3 var(--f-display)}
+.bt td.no{color:var(--bad)}
+.mini{display:flex;align-items:center;gap:10px}
+.mini .token{width:auto;min-width:44px;height:48px;padding:4px 8px 10px;flex:none}
+
+/* ---------- 坐滿車廂 ---------- */
+.levels{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.lv{border:2px solid var(--line);background:var(--paper);border-radius:12px;min-width:56px;min-height:48px;padding:4px 10px;display:flex;flex-direction:column;align-items:center;line-height:1.1}
+.lv b{font:800 18px/1.1 var(--f-num)}
+.lv small{color:var(--gold);font-size:12px;letter-spacing:1px;min-height:13px;-webkit-text-stroke:.3px #b07d00}
+.lv.cur{border-color:var(--car);background:var(--car);color:#fff}
+.brief{display:flex;gap:16px;align-items:center;margin-bottom:14px}
+.brief p{margin:0;color:var(--muted);max-width:66ch}
+.brief .token{flex:none}
+.platform{margin-top:16px;background:#c9d6de;border-radius:14px;padding:12px 14px 16px;border-top:8px solid #a8b8c3}
+.plat-label{font:700 14px/1 var(--f-display);color:#4b5f71;letter-spacing:.2em;margin-bottom:10px}
+.queue{display:flex;flex-wrap:wrap;gap:10px;min-height:calc(var(--seat)*1.3)}
+.queue .grp{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.queue .sep{width:2px;align-self:stretch;background:#a8b8c3;margin:0 4px}
+.token{height:calc(var(--seat)*1.3);width:calc(var(--seat)*var(--k) - 6px);min-width:40px}
+.token:active{transform:scale(.95)}
+.controls{margin-top:16px}
+
+/* ---------- 找錯車廂 ---------- */
+.ask{position:relative;display:flex;flex-wrap:wrap;gap:16px;align-items:center;background:var(--paper);border-radius:18px;border:2px solid var(--line);padding:16px 18px;margin:14px 0}
+.score{font:800 20px/1 var(--f-num);font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;background:var(--paper);border-radius:14px;border:2px solid var(--line);padding:10px 14px;margin-bottom:14px;font-size:14px}
+.legend .mini .token{height:40px;min-width:38px}
+.legend .mini span{font:700 15px/1 var(--f-num)}
+/* 題目車廂的長度＝這個拍號的座位數，但不畫座位；乘客排不下就換到第二排 */
+.plist{display:flex;flex-wrap:wrap;align-content:flex-start;gap:4px;background:var(--cabin);border-radius:9px;padding:4px;min-height:calc(var(--seat)*1.3);box-sizing:border-box}
+.plist .pax{width:calc(var(--seat) - 7px);height:calc(var(--seat)*1.2 - 8px);margin:0;padding:4px 0}
+.lcar:hover{box-shadow:0 -6px 0 var(--car2) inset,0 0 0 4px var(--gold)}
+.result{background:var(--paper);border-radius:18px;border:2px solid var(--line);padding:28px;text-align:center}
+.stars{font-size:44px;color:var(--gold);letter-spacing:6px;-webkit-text-stroke:1px #b07d00}
+
+/* ---------- 跟著打拍子 ---------- */
+.pad{display:block;width:100%;min-height:150px;margin-top:16px;border:0;border-radius:22px;background:var(--loco);color:#fff;font:900 44px/1 var(--f-display);box-shadow:0 8px 0 var(--loco2);touch-action:none}
+.pad:active{transform:translateY(5px);box-shadow:0 3px 0 var(--loco2)}
+.pad:disabled{opacity:.45}
+.pad small{display:block;font:500 16px/1.4 var(--f-body);margin-top:10px;opacity:.92}
+.fb{display:inline-block;min-height:1.2em;font:900 30px/1.2 var(--f-display)}
+.fb.pop{animation:pop .3s cubic-bezier(.2,1.4,.4,1)}
+.fb.ok{color:var(--ok)}.fb.near{color:var(--warn)}.fb.bad{color:var(--bad)}
+.tapbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px;margin-top:14px}
+.tapstats{display:flex;flex-wrap:wrap;gap:6px 16px;font:700 16px/1.3 var(--f-display);color:var(--muted)}
+.tapstats b{font:800 20px/1 var(--f-num);color:var(--ink)}
+
+/* ---------- 過關視窗 ---------- */
+.modal{position:fixed;inset:0;background:rgba(20,35,50,.55);display:grid;place-items:center;z-index:50;padding:20px}
+.modal[hidden]{display:none}
+.sheet{background:var(--paper);border-radius:22px;max-width:580px;width:100%;padding:26px 24px;text-align:center;max-height:90vh;overflow:auto;animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.8);opacity:0}}
+.sheet h2{font-size:28px}
+.eqs{text-align:left;margin:16px auto;display:flex;flex-direction:column;gap:8px;max-width:480px}
+.eq{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font:700 17px/1 var(--f-num)}
+.eq .lab{font:700 15px/1 var(--f-display);color:var(--muted);width:6.5em}
+.chip{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 6px;border-radius:8px;background:var(--c);color:#fff}
+.chip.rest{background:#d6dde5;color:#4f5d6c}
+.sheet .row{justify-content:center;margin-top:14px}
+
+footer{margin-top:28px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:10px}
+
+@media (max-width:900px){
+  .rules{grid-template-columns:1fr}
+}
+@media (max-width:700px){
+  .brand h1{font-size:26px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1>節奏列車．拍號篇</h1><p>一節車廂＝一小節．1 個座位＝1 個八分音符</p></div>
+    <nav class="tabs" aria-label="遊戲模式">
+      <button class="tab" data-act="mode" data-m="learn">車站導覽</button>
+      <button class="tab" data-act="mode" data-m="fill">坐滿車廂</button>
+      <button class="tab" data-act="mode" data-m="find">找錯車廂</button>
+      <button class="tab" data-act="mode" data-m="tap">跟著打拍子</button>
+    </nav>
+    <div class="settings">
+      <label for="bpm">速度 <input type="range" id="bpm" min="50" max="120" step="5" value="72"><output id="bpmv">72</output></label>
+      <label for="beatsnd"><input type="checkbox" id="beatsnd" checked> 強弱拍聲</label>
+    </div>
+  </header>
+  <main id="view"></main>
+  <footer>iPad 沒有聲音時：請把側邊靜音鍵關掉、音量調大，再點一次播放。速度數字＝每分鐘幾個四分音符；3/8 拍是八分音符算一拍，所以數起來比較快。</footer>
+</div>
+<div class="modal" id="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+
+<script>
+/* ===== 乘客（音符）資料：s = 佔幾個座位（1 座位 = 八分音符） ===== */
+const T={
+  e:{s:1,name:'八分音符',col:'--n1'},
+  q:{s:2,name:'四分音符',col:'--n2'},
+  qd:{s:3,name:'附點四分音符',col:'--n3'},
+  h:{s:4,name:'二分音符',col:'--n4'},
+  hd:{s:6,name:'附點二分音符',col:'--n6'},
+  w:{s:8,name:'全音符',col:'--n8'},
+  er:{s:1,name:'八分休止符',rest:1},
+  qr:{s:2,name:'四分休止符',rest:1},
+  hr:{s:4,name:'二分休止符',rest:1}
+};
+const NOTES=['e','q','qd','h','hd','w'], RESTS=['er','qr','hr'];
+
+/* ===== 拍號（車廂種類）：n = 座位數、bl = 一拍佔幾個座位、acc = 每拍強弱（2 強、1 次強、0 弱） ===== */
+const METER={
+  '44':{top:4,bot:4,n:8,bl:2,acc:[2,0,1,0],name:'4/4 拍'},
+  '34':{top:3,bot:4,n:6,bl:2,acc:[2,0,0],name:'3/4 拍'},
+  '24':{top:2,bot:4,n:4,bl:2,acc:[2,0],name:'2/4 拍'},
+  '38':{top:3,bot:8,n:3,bl:1,acc:[2,0,0],name:'3/8 拍'}
+};
+const MIDS=['44','34','24','38'], ACC=['弱','次強','強'];
+const used=p=>p.reduce((a,t)=>a+T[t].s,0);
+const fits=(t,m)=>T[t].s<=METER[m].n;
+const beatStr=(s,m)=>{const b=s/METER[m].bl;return b===.5?'半拍':Number.isInteger(b)?b+' 拍':Math.floor(b)+' 拍半'};
+const pick=a=>a[Math.random()*a.length|0];
+const offsets=cars=>{let g=0;return cars.map(c=>{const o=g;g+=METER[c.m].n;return o})};
+const cloneCars=cars=>cars.map(c=>({m:c.m,p:c.p.slice()}));
+
+function noteSVG(t){
+  const st='stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"';
+  const head=f=>`<ellipse cx="16.5" cy="47" rx="8.6" ry="6" transform="rotate(-22 16.5 47)" ${f?'fill="currentColor"':'fill="none" stroke="currentColor" stroke-width="3.2"'}/>`;
+  const stem='<line x1="24.4" y1="44" x2="24.4" y2="7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>';
+  const dot='<circle cx="33.5" cy="46" r="3" fill="currentColor"/>';
+  let g='';
+  switch(t){
+    case 'w':g='<ellipse cx="20" cy="38" rx="11.5" ry="7.5" fill="none" stroke="currentColor" stroke-width="4.5" transform="rotate(-12 20 38)"/>';break;
+    case 'h':g=head(0)+stem;break;
+    case 'hd':g=head(0)+stem+dot;break;
+    case 'q':g=head(1)+stem;break;
+    case 'qd':g=head(1)+stem+dot;break;
+    case 'e':g=head(1)+stem+`<path d="M24.4 7c1 8 11 11 8.5 24" ${st}/>`;break;
+    case 'hr':g='<line x1="6" y1="38" x2="34" y2="38" stroke="currentColor" stroke-width="2"/><rect x="11" y="29" width="18" height="9" fill="currentColor"/>';break;
+    case 'qr':g=`<path d="M16 8l9 11-8 9.5 9 11.5c-7-3.5-12-1-7 10" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>`;break;
+    case 'er':g=`<circle cx="15" cy="22" r="4.5" fill="currentColor"/><path d="M15 26c5 1.5 9 0 12-6L18 50" ${st}/>`;break;
+  }
+  return `<svg class="note" viewBox="0 0 40 60" aria-hidden="true">${g}</svg>`;
+}
+const paxInner=(t,ticks=true)=>noteSVG(t)+(T[t].rest?'<span class="zz">Zz</span>':'')+(ticks?`<span class="ticks">${'<i></i>'.repeat(T[t].s)}</span>`:'');
+const colVar=t=>`var(${T[t].col||'--rest'})`;
+
+function tokenHTML(t,attrs=''){
+  return `<button type="button" class="token${T[t].rest?' rest':''}" style="--k:${T[t].s};--c:${colVar(t)}" aria-label="${T[t].name}，坐 ${T[t].s} 個座位" ${attrs}>${paxInner(t)}</button>`;
+}
+
+/* 一節車廂：上方是拍子（強／弱），下方是座位；坐超過的乘客會壓到紅色「超」座位 */
+function carHTML(car,i,o={}){
+  const M=METER[car.m],u=used(car.p),cols=Math.max(M.n,u),g0=o.g0||0;
+  let h='<div class="beats">';
+  M.acc.forEach((a,b)=>h+=`<span class="beat lv${a}" data-gs="${g0+b*M.bl}" data-len="${M.bl}" style="grid-column:span ${M.bl}">${b+1}<small>${ACC[a]}</small></span>`);
+  h+='</div><div class="seats">';
+  for(let k=0;k<cols;k++){
+    const cls=k>=M.n?' xs':((k/M.bl|0)%2?' bb':'')+(k===M.n-1?' last':(k+1)%M.bl===0?' be':'');
+    h+=`<span class="seat${cls}" style="grid-column:${k+1}"><small>${k>=M.n?'超':k+1}</small></span>`;
+  }
+  let pos=0;
+  car.p.forEach((t,j)=>{
+    const act=o.ro?'tabindex="-1"':`data-act="pax-off" data-car="${i}" data-j="${j}"`;
+    h+=`<button type="button" class="pax${T[t].rest?' rest':''}" ${act} data-g="${g0+pos}" data-len="${T[t].s}" style="grid-column:${pos+1}/span ${T[t].s};--c:${colVar(t)}" aria-label="${T[t].name}">${paxInner(t)}</button>`;
+    pos+=T[t].s;
+  });
+  h+='</div>';
+  const cls=(o.sel?' sel':'')+(u===M.n?' full':'')+(o.cls||'');
+  const act=o.ro?'':`data-act="car-sel" data-car="${i}" tabindex="0"`;
+  return `<div class="car${cls}" style="--cols:${cols}" ${act}><div>${h}</div><div class="car-foot"><span>第 ${i+1} 小節</span></div><div class="wheels"><i></i><i></i></div></div>`;
+}
+
+const locoHTML=m=>`<div class="loco" ${m?`role="img" aria-label="火車頭．${METER[m].name}"`:'aria-hidden="true"'}><span class="smoke"><i></i><i></i><i></i></span><svg viewBox="0 0 130 112">
+<path d="M13 16h24l-5 24H18z" fill="#2c3440"/>
+<rect x="6" y="40" width="74" height="38" rx="16" fill="var(--loco)"/>
+<rect x="6" y="55" width="74" height="5" fill="var(--gold)"/>
+<ellipse cx="55" cy="40" rx="9" ry="7" fill="var(--gold)"/>
+<circle cx="9" cy="52" r="6.5" fill="#fff3c4" stroke="#2c3440" stroke-width="2"/>
+<rect x="72" y="22" width="52" height="56" rx="6" fill="var(--loco2)"/>
+<rect x="66" y="13" width="62" height="11" rx="4" fill="var(--car)"/>
+<rect x="84" y="32" width="28" height="20" rx="5" fill="#cfe9f5"/>
+<rect x="2" y="76" width="124" height="9" rx="3" fill="#2c3440"/>
+<path d="M2 85h20L5 100H0z" fill="#2c3440"/>
+<g class="wh"><circle cx="34" cy="96" r="12" fill="#3a4552" stroke="#222b36" stroke-width="3"/><path d="M34 86v20M24 96h20" stroke="#c9d3dd" stroke-width="2.5"/></g>
+<g class="wh"><circle cx="62" cy="96" r="12" fill="#3a4552" stroke="#222b36" stroke-width="3"/><path d="M62 86v20M52 96h20" stroke="#c9d3dd" stroke-width="2.5"/></g>
+<g class="wh"><circle cx="102" cy="93" r="15" fill="#3a4552" stroke="#222b36" stroke-width="3"/><path d="M102 80v26M89 93h26" stroke="#c9d3dd" stroke-width="2.5"/></g>
+</svg>${m?`<span class="lsig"><b>${METER[m].top}</b><b>${METER[m].bot}</b></span>`:''}</div>`;
+const LOCO=locoHTML();
+
+/* 整列火車同一個拍號，拍號只掛在車頭，車廂不掛 */
+function trainHTML(cars,o={}){
+  const off=offsets(cars);
+  return `<div class="train" id="train">${locoHTML(cars[0].m)}${cars.map((c,i)=>carHTML(c,i,{sel:!o.ro&&i===o.sel,ro:o.ro,g0:off[i],cls:o.cls&&o.cls[i]})).join('')}</div><div class="countin"></div>`;
+}
+
+/* ===== 聲音（Web Audio，全部即時合成，不需下載音檔） ===== */
+let AC=null,NOISE=null;
+function audio(){
+  if(!AC){const C=window.AudioContext||window.webkitAudioContext;AC=new C()}
+  if(AC.state!=='running')AC.resume();
+  return AC;
+}
+const dest=bus=>bus||AC.destination;
+function tone(at,dur,bus,vol=.3,f=523.25){
+  const o=AC.createOscillator(),o2=AC.createOscillator(),g=AC.createGain(),g2=AC.createGain();
+  o.type='triangle';o.frequency.value=f;o2.type='sine';o2.frequency.value=f*2;g2.gain.value=.22;
+  o.connect(g);o2.connect(g2);g2.connect(g);g.connect(dest(bus));
+  const end=at+Math.max(dur*.9,.06);
+  g.gain.setValueAtTime(.0001,at);g.gain.linearRampToValueAtTime(vol,at+.012);
+  g.gain.setTargetAtTime(vol*.55,at+.02,.12);g.gain.setTargetAtTime(.0001,Math.max(end-.02,at+.03),.02);
+  o.start(at);o2.start(at);o.stop(end+.25);o2.stop(end+.25);
+}
+function chug(at,acc,bus){
+  if(!NOISE){NOISE=AC.createBuffer(1,AC.sampleRate*.12|0,AC.sampleRate);const d=NOISE.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}
+  const s=AC.createBufferSource(),f=AC.createBiquadFilter(),g=AC.createGain();
+  s.buffer=NOISE;f.type='bandpass';f.frequency.value=acc?1300:2500;f.Q.value=1.1;
+  g.gain.setValueAtTime(acc?.5:.26,at);g.gain.exponentialRampToValueAtTime(.001,at+.08);
+  s.connect(f);f.connect(g);g.connect(dest(bus));s.start(at);s.stop(at+.12);
+}
+function drum(at,v,bus){
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='sine';o.frequency.setValueAtTime(150,at);o.frequency.exponentialRampToValueAtTime(50,at+.13);
+  g.gain.setValueAtTime(v,at);g.gain.exponentialRampToValueAtTime(.001,at+.3);
+  o.connect(g);g.connect(dest(bus));o.start(at);o.stop(at+.32);
+}
+/* 強拍：大鼓「咚」＋重車輪；次強：小一點的鼓；弱拍：只有輕輕的車輪聲 */
+function beatSound(at,lvl,bus){
+  if(lvl===2)drum(at,.95,bus);else if(lvl===1)drum(at,.4,bus);
+  chug(at,lvl>0,bus);
+}
+function click(at,acc,bus){
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='sine';o.frequency.value=acc?1760:1320;
+  g.gain.setValueAtTime(.35,at);g.gain.exponentialRampToValueAtTime(.001,at+.07);
+  o.connect(g);g.connect(dest(bus));o.start(at);o.stop(at+.09);
+}
+function whistle(){
+  const ac=audio(),t=ac.currentTime+.02;
+  [494,587,740].forEach(f=>{
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type='sine';o.frequency.setValueAtTime(f*.96,t);o.frequency.linearRampToValueAtTime(f,t+.09);
+    g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.11,t+.06);g.gain.setValueAtTime(.11,t+.6);g.gain.linearRampToValueAtTime(.0001,t+.8);
+    o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.85);
+  });
+}
+function sfx(k){
+  const ac=audio(),t=ac.currentTime+.01;
+  if(k==='pop')tone(t,.09,null,.18,784);
+  if(k==='off')tone(t,.09,null,.14,392);
+  if(k==='ok'){tone(t,.12,null,.22,784);tone(t+.12,.28,null,.22,1047)}
+  if(k==='bad'){
+    const o=ac.createOscillator(),g=ac.createGain(),f=ac.createBiquadFilter();
+    o.type='sawtooth';o.frequency.value=150;f.type='lowpass';f.frequency.value=700;
+    g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+.28);
+    o.connect(f);f.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.3);
+  }
+}
+['touchend','click'].forEach(ev=>document.addEventListener(ev,function un(){
+  const ac=audio(),b=ac.createBuffer(1,1,22050),s=ac.createBufferSource();s.buffer=b;s.connect(ac.destination);s.start(0);
+  document.removeEventListener(ev,un);
+},{passive:true}));
+/* 把「按下去的那一刻」換算成「喇叭正在播的時間」，打拍子判定才準 */
+function heardTime(ts){
+  const ac=AC;
+  if(ac.getOutputTimestamp){const o=ac.getOutputTimestamp();if(o.performanceTime>0)return o.contextTime+(ts-o.performanceTime)/1000}
+  return ac.currentTime-(ac.outputLatency||ac.baseLatency||0)-(performance.now()-ts)/1000;
+}
+
+/* ===== 播放：火車開動，乘客依座位順序發聲，車廂上方的拍子跟著亮 ===== */
+let player=null;
+function stopPlay(){if(player){player.stop();player=null}}
+function play(root,cars,o={}){
+  stopPlay();
+  const ac=audio(),sd=60/state.bpm/2,off=offsets(cars),total=cars.reduce((a,c)=>a+METER[c.m].n,0);
+  const M0=METER[cars[0].m],lead=o.count?M0.n*(cars[0].m==='38'?2:1):0;
+  const bus=ac.createGain();bus.connect(ac.destination);
+  let base=ac.currentTime+.15+(o.delay||0),curLead=lead,nextBase=0,queued=false,stopped=false,raf=0;
+  const sched=(b,ld)=>{
+    if(ld)for(let k=0;k<ld/M0.bl;k++)click(b+k*M0.bl*sd,k%M0.acc.length===0,bus);
+    cars.forEach((c,ci)=>{
+      const M=METER[c.m];let pos=0;
+      c.p.forEach(t=>{if(!T[t].rest&&pos<M.n)tone(b+(ld+off[ci]+pos)*sd,Math.min(T[t].s,M.n-pos)*sd,bus,pos===0?.34:.26);pos+=T[t].s});
+      if(state.beatSnd)M.acc.forEach((a,bi)=>beatSound(b+(ld+off[ci]+bi*M.bl)*sd,a,bus));
+    });
+  };
+  sched(base,lead);
+  const pax=[...root.querySelectorAll('.pax[data-g]')].map(el=>({el,g:+el.dataset.g,len:+el.dataset.len}));
+  const beats=[...root.querySelectorAll('.beat[data-gs]')].map(el=>({el,g:+el.dataset.gs,len:+el.dataset.len}));
+  const ci=root.querySelector('.countin');
+  root.classList.add('rolling');
+  const clear=()=>{root.classList.remove('rolling');pax.forEach(p=>p.el.classList.remove('on'));beats.forEach(x=>x.el.classList.remove('on'));if(ci)ci.innerHTML=''};
+  const frame=()=>{
+    if(stopped)return;
+    const s=(ac.currentTime-base)/sd-curLead;
+    if(ci)ci.innerHTML=(s<0&&curLead&&s>=-curLead)?`<span>${Math.floor((s+curLead)/M0.bl)%M0.acc.length+1}</span>`:'';
+    pax.forEach(p=>p.el.classList.toggle('on',s>=p.g&&s<p.g+p.len));
+    beats.forEach(x=>x.el.classList.toggle('on',s>=x.g&&s<x.g+x.len));
+    o.onFrame&&o.onFrame(s);
+    if(o.loop&&!queued&&s>total-6){nextBase=base+(curLead+total)*sd;sched(nextBase,0);queued=true}
+    if(s>=total){
+      if(o.loop){base=nextBase;curLead=0;queued=false}
+      else{stopped=true;clear();if(player&&player.root===root)player=null;o.onEnd&&o.onEnd();return}
+    }
+    raf=requestAnimationFrame(frame);
+  };
+  raf=requestAnimationFrame(frame);
+  player={root,sd,tAt:g=>base+(lead+g)*sd,stop(){stopped=true;cancelAnimationFrame(raf);clear();bus.gain.setValueAtTime(0,ac.currentTime);setTimeout(()=>bus.disconnect(),80);o.onStop&&o.onStop()}};
+  return player;
+}
+
+/* ===== 關卡與題庫 =====
+   一列火車只用一種拍號（掛在車頭），每列固定 4 節車廂；m:null＝每次隨機抽一種拍號 */
+const CARS=4;
+const LEVELS=[
+  {name:'4/4 拍：老朋友',m:'44',types:['q','h','e','w'],must:'w',
+   tip:'4/4 拍車廂有 8 個座位、4 拍。上面的 4＝有 4 拍，下面的 4＝四分音符算 1 拍。'},
+  {name:'2/4 拍：短車廂',m:'24',types:['q','e','h'],must:'h',
+   tip:'2/4 拍車廂只有 4 個座位、2 拍，強、弱，像踏步走路。二分音符一個人就坐滿了！'},
+  {name:'3/4 拍：華爾滋車廂',m:'34',types:['q','h','hd','e'],must:'hd',
+   tip:'3/4 拍車廂有 6 個座位、3 拍，強、弱、弱，像跳華爾滋「碰、恰、恰」。誰一個人就能坐滿 6 個座位？'},
+  {name:'3/8 拍：迷你車廂',m:'38',types:['e','q','qd'],must:'qd',
+   tip:'3/8 拍下面是 8：八分音符算 1 拍。車廂只有 3 個座位，附點四分音符一個人就坐滿了。'},
+  {name:'終點站大挑戰',m:null,types:['e','q','qd','h','hd','w','er','qr','hr'],must:null,
+   tip:'隨機拍號，休止符全部上車！四節車廂都要剛好坐滿，坐錯了可以點車廂裡的乘客請他下車。'}
+];
+const MINFO={
+  '44':{ex:[['q','e','e','q','q'],['h','h'],['q','q','h'],['w']],say:'最常見的車廂，很多兒歌和進行曲都用它。',no:''},
+  '34':{ex:[['h','q'],['q','q','q'],['q','e','e','q'],['hd']],say:'像跳華爾滋：「碰、恰、恰」。',no:'全音符'},
+  '24':{ex:[['q','e','e'],['h'],['q','q'],['e','e','q']],say:'像踏步走路：「左、右、左、右」。',no:'全音符、附點二分音符'},
+  '38':{ex:[['q','e'],['e','e','e'],['e','q'],['qd']],say:'下面是 8：八分音符算 1 拍，座位最少，數起來比較快。',no:'二分音符、附點二分音符、全音符'}
+};
+
+const state={mode:'learn',learnM:'44',bpm:72,beatSnd:true,
+  fill:{level:0,cars:[],sel:0,mist:0,hint:'',hintCls:'',busy:false},
+  find:null,
+  tap:{m:'44',all:false,cars:null,run:false}};
+/* 關卡改過（只剩 5 站），星星換新的存檔名稱全部歸零，舊的存檔順手清掉 */
+const STARS_KEY='rhythm-train-meter-stars-v2';
+let stars={};try{localStorage.removeItem('rhythm-train-meter-stars');stars=JSON.parse(localStorage.getItem(STARS_KEY)||'{}')}catch(e){}
+const saveStars=()=>{try{localStorage.setItem(STARS_KEY,JSON.stringify(stars))}catch(e){}};
+
+function genCar(m,types){
+  const n=METER[m].n;
+  for(let k=0;k<100;k++){
+    let r=n;const out=[];
+    while(r>0){
+      const opts=types.filter(t=>T[t].s<=r);
+      if(!opts.length)break;
+      const w=opts.map(t=>T[t].rest?.45:t==='w'?.6:1),sum=w.reduce((a,b)=>a+b,0);
+      let x=Math.random()*sum,i=0;while(x>w[i]){x-=w[i];i++}
+      const t=opts[i];
+      if(t==='qd'&&r>=4&&Math.random()<.6){out.push('qd','e');r-=4}
+      else if(t==='e'&&r>=2&&Math.random()<.7){out.push('e','e');r-=2}
+      else{out.push(t);r-=T[t].s}
+    }
+    if(r===0&&out.some(t=>!T[t].rest))return out;
+  }
+  return m==='38'?['q','e']:Array(n/2).fill('q');
+}
+function newFill(level){
+  const L=LEVELS[level],m=L.m||pick(MIDS);
+  Object.assign(state.fill,{level,cars:Array.from({length:CARS},()=>({m,p:[]})),sel:0,mist:0,busy:false,
+    hint:'月台上的乘客可以一直重複上車！點乘客，他會坐進黃色框的車廂。點車廂裡的乘客，可以請他下車。',hintCls:''});
+}
+/* 找錯車廂：先做一列全部坐對的火車，再把其中一節弄錯（多一位、少一位，或換成不同大小的乘客） */
+function mutate(car,types){
+  const n=METER[car.m].n,sounds=types.filter(t=>!T[t].rest);
+  for(let k=0;k<200;k++){
+    const p=car.p.slice(),op=Math.random()*3|0;
+    if(op===0)p.splice(Math.random()*(p.length+1)|0,0,pick(sounds.filter(t=>T[t].s<=4)));
+    else if(op===1&&p.length>1)p.splice(Math.random()*p.length|0,1);
+    else{const j=Math.random()*p.length|0,alt=types.filter(t=>T[t].s!==T[p[j]].s&&T[t].s<=n+2);if(!alt.length)continue;p[j]=pick(alt)}
+    const u=used(p);
+    if(u!==n&&u>0&&u<=n+4&&p.some(t=>!T[t].rest))return{m:car.m,p};
+  }
+  return{m:car.m,p:car.p.concat('q')};
+}
+function newFindQ(d){
+  const ms=d?MIDS:['44','34','24'],types=d?['e','q','qd','h','hd','w','er','qr','hr']:['e','q','h','hd','w'];
+  const m=pick(ms),cars=Array.from({length:CARS},()=>({m,p:genCar(m,types)}));
+  const wrong=Math.random()*cars.length|0;
+  cars[wrong]=mutate(cars[wrong],types);
+  return{cars,wrong,picked:null};
+}
+function newFind(d=state.find?state.find.d:0){state.find={d,n:0,score:0,q:newFindQ(d),done:false}}
+function newTap(){
+  const m=state.tap.m,types=m==='38'?['q','e','qd']:['q','h','e'];
+  state.tap.cars=Array.from({length:CARS},()=>({m,p:genCar(m,types)}));
+  state.tap.run=false;
+}
+
+/* ===== 畫面 ===== */
+const view=document.getElementById('view');
+
+function renderLearn(){
+  /* 一次只看一種拍號的列車：車頭掛拍號，後面 4 節車廂 */
+  const m=state.learnM,M=METER[m],I=MINFO[m];
+  const one=`<article class="mcard">
+    <div class="minfo">
+      <div><h3>${M.name}列車</h3><p class="muted">每節車廂 ${M.n} 個座位．${M.top} 拍</p></div>
+      <div><p class="acc">${M.acc.map(a=>ACC[a]).join('、')}</p><p>${I.say}</p><p class="muted">${I.no?'坐不進來：'+I.no:'每一種乘客都坐得進來'}</p></div>
+      <button class="btn primary" data-act="learn-play" data-m="${m}">▶ 聽聽看</button>
+    </div>
+    <div class="stage" id="ex-${m}">${trainHTML(I.ex.map(p=>({m,p})),{ro:true})}</div>
+  </article>`;
+  const tr=t=>`<tr><td><div class="mini">${tokenHTML(t,'tabindex="-1"')}<span>${T[t].name}</span></div></td><td>${T[t].s} 個</td><td>${beatStr(T[t].s,'44')}</td>${fits(t,'38')?`<td>${beatStr(T[t].s,'38')}</td>`:'<td class="no">坐不進去</td>'}</tr>`;
+  view.innerHTML=`<section class="rules">
+    <div>
+      <h2>拍號＝火車頭的掛牌</h2>
+      <ul>
+        <li>每節車廂＝<b>一小節</b>，火車頭上的掛牌就是<b>拍號</b>，後面每節車廂都照這個拍號坐。</li>
+        <li><b>上面的數字</b>：這節車廂有<b>幾拍</b>。</li>
+        <li><b>下面的數字</b>：<b>誰算 1 拍</b>。4＝四分音符算 1 拍；8＝八分音符算 1 拍。</li>
+        <li>1 個座位＝1 個八分音符的長度。拍號不同，車廂的<b>座位數</b>就不同。</li>
+        <li>第 1 拍是<b>強拍</b>，火車會「咚」一聲；座位<b>剛好坐滿</b>，火車才能出發。</li>
+      </ul>
+    </div>
+    <div class="bigsig" aria-label="拍號說明：上面 3 是有 3 拍，下面 4 是四分音符算 1 拍">
+      <div><b>3</b><span>← 一節車廂有 3 拍</span></div>
+      <div><b>4</b><span>← 四分音符算 1 拍</span></div>
+    </div>
+  </section>
+  <p class="sect">四種列車，一次看一種</p>
+  <div class="row" role="group" aria-label="選拍號" style="margin-bottom:12px">${MIDS.map(k=>`<button class="tab" data-act="learn-m" data-m="${k}" aria-current="${k===m}">${METER[k].name}</button>`).join('')}</div>
+  ${one}
+  <p class="sect">同一位乘客，在不同車廂算幾拍？</p>
+  <table class="bt"><thead><tr><th>乘客</th><th>坐幾個座位</th><th>在 4/4、3/4、2/4 車廂</th><th>在 3/8 車廂</th></tr></thead>
+  <tbody>${NOTES.map(tr).join('')}</tbody></table>
+  <div class="row" style="margin-top:18px"><button class="btn go" data-act="mode" data-m="fill">開始玩「坐滿車廂」 →</button></div>`;
+}
+
+function renderFill(arrive){
+  stopPlay();
+  const F=state.fill,L=LEVELS[F.level],allFull=F.cars.every(c=>used(c.p)===METER[c.m].n);
+  /* 月台：這一站可用的音符、休止符，每一種都能重複上車；每站都有四分休止符，3/8 拍再加八分休止符 */
+  const types=[...new Set(L.types.concat('qr',F.cars[0].m==='38'?'er':[]))];
+  const grp=ts=>`<div class="grp">${ts.sort((a,b)=>T[a].s-T[b].s).map(t=>tokenHTML(t,`data-act="board" data-t="${t}"`)).join('')}</div>`;
+  view.innerHTML=`<nav class="levels" aria-label="選擇關卡">${LEVELS.map((l,i)=>`<button class="lv${i===F.level?' cur':''}" data-act="lv" data-i="${i}" aria-label="第 ${i+1} 站 ${l.name}"><b>${i+1}</b><small>${'★'.repeat(stars[i]||0)}</small></button>`).join('')}</nav>
+  <section class="brief">${L.must?tokenHTML(L.must,'tabindex="-1"'):LOCO.replace('class="loco"','class="loco" style="width:90px"')}<div><h2>第 ${F.level+1} 站：${L.name}</h2><p>${L.tip}</p></div></section>
+  <section class="stage" id="stage">${trainHTML(F.cars,{sel:F.sel})}</section>
+  <p class="hint ${F.hintCls}" id="hint" aria-live="polite">${F.hint}</p>
+  <section class="platform"><div class="plat-label">月 台</div>
+    <div class="queue">${grp(types.filter(t=>!T[t].rest))}<span class="sep"></span>${grp(types.filter(t=>T[t].rest))}</div>
+  </section>
+  <div class="row controls">
+    <button class="btn" data-act="fill-listen">▶ 試聽</button>
+    <button class="btn" data-act="fill-undo">↶ 最後一位下車</button>
+    <button class="btn" data-act="fill-reset">全部下車</button>
+    ${L.m?'':'<button class="btn" data-act="fill-new">換一種拍號</button>'}
+    <button class="btn go" data-act="fill-go" ${allFull?'':'disabled'}>發車！</button>
+  </div>`;
+  if(arrive)document.getElementById('train').classList.add('arrive');
+}
+
+function listCarHTML(car,i){
+  const M=METER[car.m];
+  return `<div class="car lcar" data-act="find-pick" data-i="${i}" role="button" tabindex="0" aria-label="第 ${i+1} 小節"><div class="plist" style="width:calc(var(--seat)*${M.n})">${car.p.map(t=>`<span class="pax${T[t].rest?' rest':''}" style="--c:${colVar(t)}" role="img" aria-label="${T[t].name}">${paxInner(t,false)}</span>`).join('')}</div><div class="car-foot"><span>第 ${i+1} 小節</span></div><div class="wheels"><i></i><i></i></div></div>`;
+}
+function findExplain(q){
+  const c=q.cars[q.wrong],M=METER[c.m],u=used(c.p),d=Math.abs(u-M.n);
+  return `第 ${q.wrong+1} 小節是 ${M.name}，要坐 ${M.n} 個座位，可是乘客坐了 ${u} 個座位，${u>M.n?'多':'少'}了 ${d} 個座位（${beatStr(d,c.m)}）。`;
+}
+function renderFind(){
+  const Q=state.find;
+  const diff=`<div class="row" role="group" aria-label="難度">${['簡單','挑戰'].map((p,i)=>`<button class="tab" data-act="find-diff" data-d="${i}" aria-current="${i===Q.d}">${p}</button>`).join('')}</div>`;
+  if(Q.done){
+    const s=Q.score>=9?3:Q.score>=7?2:Q.score>=4?1:0;
+    view.innerHTML=`${diff}<section class="result" style="margin-top:14px"><h2>到站了！</h2><div class="stars">${'★'.repeat(s)}${'☆'.repeat(3-s)}</div><p class="score">答對 ${Q.score} / 10 題</p><div class="row" style="justify-content:center"><button class="btn primary" data-act="find-again">再玩一次</button></div></section>`;
+    return;
+  }
+  const q=Q.q,ans=q.picked!==null,ok=q.picked===q.wrong;
+  const legend=`<section class="legend" aria-label="座位小抄"><b>座位小抄</b>${NOTES.concat(Q.d?RESTS:[]).map(t=>`<span class="mini">${tokenHTML(t,'tabindex="-1"')}<span>${T[t].s}</span></span>`).join('')}</section>`;
+  let train;
+  if(!ans)train=`<div class="train">${locoHTML(q.cars[0].m)}${q.cars.map(listCarHTML).join('')}</div>`;
+  else{
+    const c=q.cars[q.wrong],cls=q.cars.map((x,i)=>i===q.wrong?(used(c.p)>METER[c.m].n?' over':' under'):'');
+    train=trainHTML(q.cars,{ro:true,cls});
+  }
+  view.innerHTML=`${diff}
+  <section class="ask">
+    <div style="flex:1;min-width:220px"><h2 style="margin:0">第 ${Q.n+1} / 10 題</h2><p style="margin:0" class="muted">每節車廂都要剛好坐滿。有一節車廂坐錯了：可能超載，也可能沒坐滿。找出來，點它！</p></div>
+    <div class="score">答對 ${Q.score}</div>
+  </section>
+  ${legend}
+  <section class="stage" id="stage">${train}</section>
+  <p class="hint ${ans?(ok?'ok':'bad'):''}" aria-live="polite">${ans?(ok?'答對了！':`第 ${q.picked+1} 小節沒有坐錯喔。`)+findExplain(q):''}</p>
+  ${ans?`<div class="row"><button class="btn primary" data-act="find-next">${Q.n===9?'看成績':'下一題'}</button></div>`:''}`;
+}
+
+function renderTap(){
+  stopPlay();
+  const P=state.tap,M=METER[P.m];
+  view.innerHTML=`<div class="row" role="group" aria-label="選拍號" style="margin-bottom:8px"><span class="muted">拍號：</span>${MIDS.map(m=>`<button class="tab" data-act="tap-m" data-m="${m}" aria-current="${m===P.m}" style="font-family:var(--f-num);font-size:18px">${METER[m].top}/${METER[m].bot}</button>`).join('')}</div>
+  <div class="row" role="group" aria-label="玩法" style="margin-bottom:14px"><span class="muted">玩法：</span>
+    <button class="tab" data-act="tap-all" data-v="0" aria-current="${!P.all}">只拍強拍</button>
+    <button class="tab" data-act="tap-all" data-v="1" aria-current="${P.all}">每一拍都拍</button></div>
+  <section class="brief"><div><h2>${M.name}：${M.acc.map(a=>ACC[a]).join('、')}</h2><p>${P.all?`每一拍都拍一下，心裡數「${M.acc.map((a,i)=>i+1).join(' ')}」。`:'聽到「咚」的強拍（每節車廂的第 1 拍）就拍一下，其他拍不要拍。'}先聽預備拍，再開始。電腦可以按空白鍵。</p></div></section>
+  <section class="stage" id="stage">${trainHTML(P.cars,{ro:true})}</section>
+  <div class="tapbar">
+    <button class="btn go" data-act="tap-start" id="tapstart">▶ 開始</button>
+    <button class="btn" data-act="tap-new">換一列火車</button>
+    <span class="fb" id="fb" aria-live="polite"></span>
+    <span class="tapstats" id="tapstats"></span>
+  </div>
+  <button type="button" class="pad" id="pad" disabled>拍！<small>按「開始」後，跟著火車拍</small></button>`;
+}
+
+function render(arrive){
+  stopPlay();state.tap.run=false;
+  document.querySelectorAll('.tabs .tab').forEach(b=>b.setAttribute('aria-current',b.dataset.m===state.mode));
+  ({learn:renderLearn,fill:renderFill,find:renderFind,tap:renderTap})[state.mode](arrive);
+}
+function setHint(txt,cls=''){
+  const o=state.fill;o.hint=txt;o.hintCls=cls;
+  const h=document.getElementById('hint');if(h){h.textContent=txt;h.className='hint '+cls}
+}
+function shake(el){el.classList.remove('shake');void el.offsetWidth;el.classList.add('shake')}
+const eqHTML=car=>{const M=METER[car.m];return car.p.map(t=>`<span class="chip${T[t].rest?' rest':''}" style="--c:${colVar(t)}">${T[t].s}</span>`).join('<span>＋</span>')+`<span>＝ ${M.n} 座位＝${M.top} 拍</span>`};
+
+/* ===== 乘客上車 ===== */
+function seatCheck(cars,c,t){
+  const C=cars[c],M=METER[C.m],left=M.n-used(C.p);
+  if(!fits(t,C.m))return`${T[t].name}要坐 ${T[t].s} 個座位，${M.name}的車廂只有 ${M.n} 個座位，永遠坐不進去！`;
+  if(T[t].s>left)return`第 ${c+1} 小節（${M.name}）只剩 ${left} 個座位，${T[t].name}要坐 ${T[t].s} 個座位，坐不下！`;
+  return'';
+}
+const nextOpen=cars=>cars.findIndex(x=>used(x.p)<METER[x.m].n);
+
+/* 月台乘客可以重複上車：點一次就有一位 t 坐進車廂 */
+function board(t,el){
+  const F=state.fill;if(F.busy)return;
+  let c=F.sel;
+  if(used(F.cars[c].p)===METER[F.cars[c].m].n){const nf=nextOpen(F.cars);if(nf<0){sfx('bad');shake(el);setHint('每節車廂都坐滿了！按「發車」，或點車廂裡的乘客請他下車。','bad');return}c=F.sel=nf}
+  const err=seatCheck(F.cars,c,t);
+  if(err){F.mist++;sfx('bad');shake(el);setHint(err+' 換別的乘客，或點別節車廂。','bad');return}
+  const C=F.cars[c],M=METER[C.m];
+  C.p.push(t);sfx('pop');
+  const u=used(C.p);
+  if(u===M.n){
+    const nf=nextOpen(F.cars);if(nf>=0)F.sel=nf;
+    F.hint=`第 ${c+1} 小節（${M.name}）坐滿了：${C.p.map(x=>T[x].s).join('＋')}＝${M.n} 個座位，剛好 ${M.top} 拍！`;F.hintCls='ok';
+  }else{F.hint=`第 ${c+1} 小節已經坐了 ${u} 個座位，還剩 ${M.n-u} 個。`;F.hintCls=''}
+  if(nextOpen(F.cars)<0){F.hint='全部坐好了！按「發車」聽聽看，注意聽每節車廂的強拍。';F.hintCls='ok'}
+  renderFill();
+}
+function fillGo(){
+  const F=state.fill;if(F.busy||!F.cars.every(c=>used(c.p)===METER[c.m].n))return;
+  F.busy=true;whistle();
+  view.querySelectorAll('.controls .btn,.lv').forEach(b=>b.disabled=true);
+  setHint('預備……跟著車廂上方的數字一起數拍子，「咚」的地方是強拍！','');
+  const stage=document.getElementById('stage');
+  play(stage,F.cars,{count:true,delay:.8,onEnd(){
+    stage.classList.add('rolling');
+    document.getElementById('train').classList.add('depart');
+    setTimeout(()=>{stage.classList.remove('rolling');showWin()},1500);
+  }});
+}
+function showWin(){
+  const F=state.fill,s=F.mist===0?3:F.mist<=2?2:1;
+  stars[F.level]=Math.max(stars[F.level]||0,s);saveStars();sfx('ok');
+  const last=F.level===LEVELS.length-1;
+  document.getElementById('sheet').innerHTML=`<h2>${last?'抵達終點站！':'列車出發成功！'}</h2>
+    <div class="stars">${'★'.repeat(s)}${'☆'.repeat(3-s)}</div>
+    <p style="margin:4px 0" class="muted">${F.mist?`有 ${F.mist} 位乘客坐不下被請回月台。`:'一次都沒坐錯，太厲害了！'}</p>
+    <div class="eqs">${F.cars.map((c,i)=>`<div class="eq"><span class="lab">第 ${i+1} 小節 ${METER[c.m].top}/${METER[c.m].bot}</span>${eqHTML(c)}</div>`).join('')}</div>
+    <div class="row"><button class="btn" data-act="fill-again">這一站再玩一次</button>${last?'':'<button class="btn primary" data-act="fill-next">前往下一站 →</button>'}</div>`;
+  document.getElementById('modal').hidden=false;
+}
+const closeModal=()=>{document.getElementById('modal').hidden=true};
+
+/* ===== 跟著打拍子 ===== */
+let tapG=null;
+function tapStart(){
+  const P=state.tap;
+  if(P.run){tapStop();return}
+  const stage=document.getElementById('stage');
+  stage.querySelectorAll('.beat').forEach(b=>b.classList.remove('hit','near','miss'));
+  P.run=true;
+  tapG={targets:[],all:[],st:{perfect:0,near:0,miss:0,extra:0}};
+  const p=play(stage,P.cars,{count:true,onFrame:tapFrame,onEnd(){setTimeout(tapFinish,400)},onStop(){P.run=false}});
+  const off=offsets(P.cars);
+  P.cars.forEach((c,ci)=>{const M=METER[c.m];M.acc.forEach((a,bi)=>{
+    const g=off[ci]+bi*M.bl,b={t:p.tAt(g),win:Math.min(.3,M.bl*p.sd*.45),lvl:a,done:false,el:stage.querySelector(`.beat[data-gs="${g}"]`)};
+    tapG.all.push(b);if(P.all||bi===0)tapG.targets.push(b);
+  })});
+  document.getElementById('pad').disabled=false;
+  document.getElementById('tapstart').textContent='■ 停止';
+  tapStats();fb('');
+}
+function tapStop(){stopPlay();state.tap.run=false;renderTap()}
+function fb(txt,cls=''){const el=document.getElementById('fb');if(!el)return;el.textContent=txt;el.className='fb '+cls;void el.offsetWidth;if(txt)el.classList.add('pop')}
+function tapStats(){
+  const s=tapG.st,el=document.getElementById('tapstats');
+  if(el)el.innerHTML=`<span>準 <b>${s.perfect}</b></span><span>差一點 <b>${s.near}</b></span><span>漏掉 <b>${s.miss}</b></span><span>多拍 <b>${s.extra}</b></span>`;
+}
+function tapHit(ts){
+  if(!state.tap.run||!tapG||!AC)return;
+  const tt=heardTime(ts),G=tapG;
+  if(tt<G.targets[0].t-G.targets[0].win)return; /* 預備拍時跟著拍不算 */
+  let best=null,bd=1e9;
+  G.targets.forEach(b=>{if(!b.done){const d=Math.abs(tt-b.t);if(d<b.win&&d<bd){bd=d;best=b}}});
+  if(best){
+    best.done=true;const d=tt-best.t;
+    if(Math.abs(d)<=Math.min(.07,best.win*.45)){G.st.perfect++;best.el&&best.el.classList.add('hit');fb('準！','ok')}
+    else{G.st.near++;best.el&&best.el.classList.add('near');fb(d<0?'早了一點':'晚了一點','near')}
+  }else{
+    G.st.extra++;
+    const weak=!state.tap.all&&G.all.some(b=>b.lvl!==2&&Math.abs(tt-b.t)<b.win);
+    fb(weak?'這是弱拍，不用拍喔':'多拍了','bad');
+  }
+  tapStats();
+}
+function tapFrame(){
+  if(!tapG)return;
+  const now=heardTime(performance.now());let ch=false;
+  tapG.targets.forEach(b=>{if(!b.done&&now>b.t+b.win){b.done=true;tapG.st.miss++;b.el&&b.el.classList.add('miss');ch=true}});
+  if(ch){tapStats();fb('漏掉了','bad')}
+}
+function tapFinish(){
+  const P=state.tap;if(!P.run)return;
+  tapG.targets.forEach(b=>{if(!b.done){b.done=true;tapG.st.miss++;b.el&&b.el.classList.add('miss')}});
+  P.run=false;tapStats();
+  const pad=document.getElementById('pad');if(pad)pad.disabled=true;
+  const btn=document.getElementById('tapstart');if(btn)btn.textContent='▶ 開始';
+  const s=tapG.st,n=tapG.targets.length,acc=(s.perfect+.6*s.near)/n-s.extra*.03;
+  const st=acc>=.85?3:acc>=.6?2:acc>=.3?1:0;
+  if(st)sfx('ok');
+  document.getElementById('sheet').innerHTML=`<h2>${st===3?'節奏好穩！':st?'列車到站！':'再試一次吧！'}</h2>
+    <div class="stars">${'★'.repeat(st)}${'☆'.repeat(3-st)}</div>
+    <p class="muted" style="margin:6px 0 0">${METER[P.m].name}．${P.all?'每一拍都拍':'只拍強拍'}．一共 ${n} 下</p>
+    <p class="score" style="margin:10px 0">準 ${s.perfect}．差一點 ${s.near}．漏掉 ${s.miss}．多拍 ${s.extra}</p>
+    <p class="muted" style="margin:0">車廂上方的拍子：綠色＝準，橘色＝差一點，紅色＝漏掉。</p>
+    <div class="row"><button class="btn" data-act="tap-close">看看結果</button><button class="btn primary" data-act="tap-again">再玩一次</button></div>`;
+  document.getElementById('modal').hidden=false;
+}
+
+/* ===== 事件 ===== */
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]');if(!el||el.disabled)return;
+  const a=el.dataset.act,F=state.fill,Q=state.find;
+  switch(a){
+    case 'mode':closeModal();state.mode=el.dataset.m;try{history.replaceState(null,'','#'+state.mode)}catch(_){}
+      render();window.scrollTo({top:0});break;
+    case 'learn-m':state.learnM=el.dataset.m;renderLearn();break;
+    case 'learn-play':{const m=el.dataset.m;play(document.getElementById('ex-'+m),MINFO[m].ex.map(p=>({m,p})),{count:true});break;}
+    case 'lv':newFill(+el.dataset.i);render(true);break;
+    case 'board':board(el.dataset.t,el);break;
+    case 'car-sel':if(F.busy)return;F.sel=+el.dataset.car;renderFill();break;
+    case 'pax-off':{
+      if(F.busy)return;
+      const c=+el.dataset.car,t=F.cars[c].p.splice(+el.dataset.j,1)[0];
+      F.sel=c;F.hint=`${T[t].name}下車了。`;F.hintCls='';renderFill();sfx('off');break;}
+    case 'fill-undo':{
+      if(F.busy)return;
+      const i=F.cars.map(c=>c.p.length>0).lastIndexOf(true);
+      if(i>=0){F.cars[i].p.pop();F.sel=i;F.hint=`第 ${i+1} 小節的最後一位下車了。`;F.hintCls='';renderFill();sfx('off')}
+      break;}
+    case 'fill-listen':play(document.getElementById('stage'),F.cars,{count:true});break;
+    case 'fill-reset':F.cars.forEach(c=>c.p.length=0);F.sel=0;F.hint='大家都下車了，重新安排座位吧！';F.hintCls='';renderFill();break;
+    case 'fill-new':newFill(F.level);render(true);break;
+    case 'fill-go':fillGo();break;
+    case 'fill-next':closeModal();newFill(Math.min(F.level+1,LEVELS.length-1));render(true);break;
+    case 'fill-again':closeModal();newFill(F.level);render(true);break;
+    case 'find-diff':newFind(+el.dataset.d);render();break;
+    case 'find-pick':{const q=Q.q;if(q.picked!==null)return;q.picked=+el.dataset.i;if(q.picked===q.wrong){Q.score++;sfx('ok')}else sfx('bad');renderFind();break;}
+    case 'find-next':Q.n++;if(Q.n>=10)Q.done=true;else Q.q=newFindQ(Q.d);render();break;
+    case 'find-again':newFind();render();break;
+    case 'tap-m':state.tap.m=el.dataset.m;newTap();render();break;
+    case 'tap-all':state.tap.all=el.dataset.v==='1';render();break;
+    case 'tap-start':tapStart();break;
+    case 'tap-new':newTap();render();break;
+    case 'tap-close':closeModal();break;
+    case 'tap-again':closeModal();tapStart();break;
+  }
+});
+/* 打拍子用 pointerdown（手指一碰就算），比 click 快 */
+document.addEventListener('pointerdown',e=>{
+  const pad=e.target.closest('#pad');
+  if(pad&&!pad.disabled){e.preventDefault();tapHit(e.timeStamp)}
+});
+document.addEventListener('keydown',e=>{
+  if(state.mode==='tap'&&state.tap.run&&(e.code==='Space'||e.key==='Enter'||/^[a-z]$/i.test(e.key))){
+    e.preventDefault();if(!e.repeat)tapHit(e.timeStamp);return;
+  }
+  if((e.key==='Enter'||e.key===' ')&&e.target.matches('.car[data-act]')){e.preventDefault();e.target.click()}
+});
+const bpm=document.getElementById('bpm'),bpmv=document.getElementById('bpmv'),beatBox=document.getElementById('beatsnd');
+bpm.addEventListener('input',()=>{state.bpm=+bpm.value;bpmv.textContent=bpm.value});
+beatBox.addEventListener('change',()=>{state.beatSnd=beatBox.checked});
+
+/* ===== 直式拍號：畫面上任何「4/4」這類文字，自動換成上下疊的數字 ===== */
+const SIG_RE=/([2-4])\/([48])/g;
+function vertSig(root){
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>/[2-4]\/[48]/.test(n.data)&&!n.parentNode.closest('script,style,.vsig')?1:2});
+  const list=[];while(w.nextNode())list.push(w.currentNode);
+  list.forEach(n=>{
+    const f=document.createDocumentFragment();let last=0;
+    n.data.replace(SIG_RE,(m,a,b,i)=>{
+      f.append(n.data.slice(last,i));
+      const s=document.createElement('span');s.className='vsig';s.setAttribute('role','img');s.setAttribute('aria-label',a+'/'+b);s.innerHTML=`<b>${a}</b><b>${b}</b>`;
+      f.append(s);last=i+m.length;
+    });
+    f.append(n.data.slice(last));n.replaceWith(f);
+  });
+}
+new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{
+  if(n.nodeType===1)vertSig(n);else if(n.nodeType===3&&n.parentNode)vertSig(n.parentNode);
+}))).observe(document.body,{childList:true,subtree:true});
+vertSig(document.body);
+
+/* ===== 啟動 ===== */
+const h=(location.hash||'').slice(1);
+state.mode=['learn','fill','find','tap'].includes(h)?h:'learn';
+newFill(0);newFind(0);newTap();render();
+</script>
