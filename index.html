@@ -174,6 +174,9 @@ table.bt{border-collapse:collapse;background:var(--paper);width:100%;max-width:7
 .queue .grp{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
 .queue .sep{width:2px;align-self:stretch;background:#a8b8c3;margin:0 4px}
 .token{height:calc(var(--seat)*1.3);width:calc(var(--seat)*var(--k) - 6px);min-width:40px}
+/* 一組乘客：兩位乘客並排在同一個按鈕裡 */
+.token.grp{flex-direction:row;align-items:stretch;gap:3px;padding:0;background:none;box-shadow:none}
+.token.grp .part{position:relative;min-width:0;border-radius:10px;background:var(--c);color:#fff;display:flex;align-items:center;padding:4px 0 10px;box-shadow:0 -4px 0 rgba(0,0,0,.14) inset}
 .token:active{transform:scale(.95)}
 .controls{margin-top:16px}
 
@@ -258,7 +261,9 @@ const T={
   w:{s:8,name:'全音符',col:'--n8'},
   er:{s:1,name:'八分休止符',rest:1},
   qr:{s:2,name:'四分休止符',rest:1},
-  hr:{s:4,name:'二分休止符',rest:1}
+  hr:{s:4,name:'二分休止符',rest:1},
+  /* 一組乘客：只出現在月台，上車時拆成 grp 裡的每一位，依序坐進同一節車廂 */
+  qde:{s:4,name:'附點四分音符＋八分音符',grp:['qd','e']}
 };
 const NOTES=['e','q','qd','h','hd','w'], RESTS=['er','qr','hr'];
 
@@ -300,6 +305,7 @@ const paxInner=(t,ticks=true)=>noteSVG(t)+(T[t].rest?'<span class="zz">Zz</span>
 const colVar=t=>`var(${T[t].col||'--rest'})`;
 
 function tokenHTML(t,attrs=''){
+  if(T[t].grp)return `<button type="button" class="token grp" style="--k:${T[t].s}" aria-label="${T[t].name}一組，坐 ${T[t].s} 個座位" ${attrs}>${T[t].grp.map(x=>`<span class="part" style="flex:${T[x].s};--c:${colVar(x)}">${paxInner(x)}</span>`).join('')}</button>`;
   return `<button type="button" class="token${T[t].rest?' rest':''}" style="--k:${T[t].s};--c:${colVar(t)}" aria-label="${T[t].name}，坐 ${T[t].s} 個座位" ${attrs}>${paxInner(t)}</button>`;
 }
 
@@ -588,7 +594,8 @@ function renderFill(arrive){
   stopPlay();
   const F=state.fill,L=LEVELS[F.level],allFull=F.cars.every(c=>used(c.p)===METER[c.m].n);
   /* 月台：這一站可用的音符、休止符，每一種都能重複上車；每站都有四分休止符，3/8 拍再加八分休止符 */
-  const types=[...new Set(L.types.concat('qr',F.cars[0].m==='38'?'er':[]))];
+  /* 附點四分音符在月台上和八分音符綁成一組（3/8 拍車廂只有 3 個座位，坐不下一組，仍然單獨上車） */
+  const types=[...new Set(L.types.concat('qr',F.cars[0].m==='38'?'er':[]))].map(t=>t==='qd'&&F.cars[0].m!=='38'?'qde':t);
   const grp=ts=>`<div class="grp">${ts.sort((a,b)=>T[a].s-T[b].s).map(t=>tokenHTML(t,`data-act="board" data-t="${t}"`)).join('')}</div>`;
   view.innerHTML=`<nav class="levels" aria-label="選擇關卡">${LEVELS.map((l,i)=>`<button class="lv${i===F.level?' cur':''}" data-act="lv" data-i="${i}" aria-label="第 ${i+1} 站 ${l.name}"><b>${i+1}</b><small>${'★'.repeat(stars[i]||0)}</small></button>`).join('')}</nav>
   <section class="brief">${L.must?tokenHTML(L.must,'tabindex="-1"'):LOCO.replace('class="loco"','class="loco" style="width:90px"')}<div><h2>第 ${F.level+1} 站：${L.name}</h2><p>${L.tip}</p></div></section>
@@ -689,7 +696,7 @@ function board(t,el){
   const err=seatCheck(F.cars,c,t);
   if(err){F.mist++;sfx('bad');shake(el);setHint(err+' 換別的乘客，或點別節車廂。','bad');return}
   const C=F.cars[c],M=METER[C.m];
-  C.p.push(t);sfx('pop');
+  C.p.push(...(T[t].grp||[t]));sfx('pop');
   const u=used(C.p);
   if(u===M.n){
     const nf=nextOpen(F.cars);if(nf>=0)F.sel=nf;
